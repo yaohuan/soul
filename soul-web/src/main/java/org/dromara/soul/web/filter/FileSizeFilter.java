@@ -19,10 +19,12 @@
 
 package org.dromara.soul.web.filter;
 
-import org.dromara.soul.common.result.SoulResult;
 import org.dromara.soul.common.utils.GsonUtils;
 import org.dromara.soul.web.filter.support.BodyInserterContext;
 import org.dromara.soul.web.filter.support.CachedBodyOutputMessage;
+import org.dromara.soul.web.result.SoulResultEnum;
+import org.dromara.soul.web.result.SoulResultUtils;
+import org.dromara.soul.web.result.SoulResultWarp;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
@@ -75,22 +77,18 @@ public class FileSizeFilter implements WebFilter {
                         if (size.capacity() > BYTES_PER_MB * maxSize) {
                             ServerHttpResponse response = exchange.getResponse();
                             response.setStatusCode(HttpStatus.BAD_REQUEST);
-                            final SoulResult result = SoulResult.error(HttpStatus.PAYLOAD_TOO_LARGE.value(),
-                                    HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase());
-                            return response.writeWith(Mono.just(response.bufferFactory()
-                                    .wrap(GsonUtils.getInstance().toJson(result).getBytes())));
+                            Object error = SoulResultWarp.error(SoulResultEnum.PAYLOAD_TOO_LARGE.getCode(), SoulResultEnum.PAYLOAD_TOO_LARGE.getMsg(), null);
+                            return SoulResultUtils.result(exchange, error);
                         }
                         BodyInserter bodyInserter = BodyInserters.fromPublisher(Mono.just(size), DataBuffer.class);
                         HttpHeaders headers = new HttpHeaders();
                         headers.putAll(exchange.getRequest().getHeaders());
-                        // the new content type will be computed by bodyInserter
-                        // and then set in the request decorator
                         headers.remove(HttpHeaders.CONTENT_LENGTH);
                         CachedBodyOutputMessage outputMessage = new CachedBodyOutputMessage(
                                 exchange, headers);
                         return bodyInserter.insert(outputMessage, new BodyInserterContext())
                                 .then(Mono.defer(() -> {
-                                    ServerHttpRequest decorator = decorate(exchange, headers, outputMessage);
+                                    ServerHttpRequest decorator = decorate(exchange, outputMessage);
                                     return chain.filter(exchange.mutate().request(decorator).build());
 
                                 }));
@@ -100,22 +98,8 @@ public class FileSizeFilter implements WebFilter {
 
     }
 
-    ServerHttpRequestDecorator decorate(final ServerWebExchange exchange, final HttpHeaders headers, final CachedBodyOutputMessage outputMessage) {
-
+    private ServerHttpRequestDecorator decorate(final ServerWebExchange exchange, final CachedBodyOutputMessage outputMessage) {
         return new ServerHttpRequestDecorator(exchange.getRequest()) {
-            @Override
-            public HttpHeaders getHeaders() {
-                long contentLength = headers.getContentLength();
-                HttpHeaders httpHeaders = new HttpHeaders();
-                httpHeaders.putAll(super.getHeaders());
-                if (contentLength > 0) {
-                    httpHeaders.setContentLength(contentLength);
-                } else {
-                    httpHeaders.set(HttpHeaders.TRANSFER_ENCODING, "chunked");
-                }
-                return httpHeaders;
-            }
-
             @Override
             public Flux<DataBuffer> getBody() {
                 return outputMessage.getBody();
