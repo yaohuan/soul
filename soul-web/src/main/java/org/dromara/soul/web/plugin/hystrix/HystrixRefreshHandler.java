@@ -17,25 +17,35 @@
  *
  */
 
-package org.dromara.soul.web.plugin.before;
+package org.dromara.soul.web.plugin.hystrix;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.dromara.soul.web.request.RequestDTO;
-import org.springframework.web.server.ServerWebExchange;
+import com.netflix.hystrix.strategy.properties.HystrixPropertiesFactory;
+import org.dromara.soul.common.dto.RuleData;
+import org.dromara.soul.common.enums.PluginEnum;
+
+import java.util.List;
 
 /**
- * The interface Sign service.
+ * The enum Hystrix rule refresh handler.
  *
- * @author xiaoyu
+ * @author xiaoyu(Myth)
  */
-public interface SignService {
+public enum HystrixRefreshHandler {
 
     /**
-     * Sign verify pair.
-     *
-     * @param requestDTO the request dto
-     * @param exchange   the exchange
-     * @return the pair
+     * Ins hystrix rule refresh handler.
      */
-    Pair<Boolean, String> signVerify(RequestDTO requestDTO, ServerWebExchange exchange);
+    INS;
+
+    /**
+     * Refresh hystrix.
+     *
+     * @param ruleDataList the rule data list
+     */
+    public void refreshHystrix(final List<RuleData> ruleDataList) {
+        ruleDataList.stream()
+                .filter(RuleData::getEnabled)
+                .filter(e -> PluginEnum.HYSTRIX.getName().equals(e.getPluginName()))
+                .findFirst().ifPresent(ruleData -> HystrixPropertiesFactory.reset());
+    }
 }
